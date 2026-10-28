@@ -74,6 +74,8 @@ def _is_valid_street_pos(cx, cy, bw, bh, w, h):
         min_cx = w * 0.415
     else:
         min_cx = max(w * 0.14, w * 0.415 - (h * 0.28 - cy) * 1.65)
+    if bw > 65:
+        min_cx = min(min_cx, max(w * 0.14, w * 0.415 - (bw - 65) * 2.8))
     if cx < min_cx or cx > w * 0.992:
         return False
     return True
@@ -224,12 +226,19 @@ def verify_and_classify_circle(hsv, cx, cy, r, frame_w, allow_loose_np=True):
     inner = rad < 0.65
 
     # 1. NO LEFT TURN: Red outer ring + white inner disc + black arrow symbol
-    if cx >= frame_w * 0.56 and ring.any() and inner.any():
+    if ring.any() and inner.any():
         r_ring = red_rim[ring].mean()
         r_inner = red_strict[inner].mean()
         w_inner = wht_loose[inner].mean()
         k_inner = blk_px[inner].mean()
-        if r_ring >= 0.22 and rs_ratio >= 0.12 and r_inner < 0.38 and w_inner >= 0.28 and 0.045 <= k_inner <= 0.42 and bs_ratio < 0.15:
+        if cx >= frame_w * 0.56:
+            nlt_ok = (r_ring >= 0.22 and rs_ratio >= 0.12 and r_inner < 0.38 and w_inner >= 0.28)
+        else:
+            nlt_ok = (
+                r >= 18.0 and r_ring >= 0.25 and r_inner < 0.28 and w_inner >= 0.48
+                and (rs_ratio >= 0.12 or (rr_ratio >= 0.25 and rs_ratio >= 0.06))
+            )
+        if nlt_ok and 0.045 <= k_inner <= 0.42 and bs_ratio < 0.15:
             if bg_red < rr_ratio * 0.55:
                 return True, "No Left Turn"
 
@@ -877,11 +886,14 @@ def draw_recognitions(frame, active_boxes):
         tx = max(4, min(w - tw - 6, int(round(cx - tw / 2.0))))
 
         # Place above if no sign is directly above (and not at very top of frame);
-        # otherwise place below the sign (or inside top border for a middle sign of 3)
+        # otherwise place below the sign (or to the right of a middle sign of 3)
         if not has_above and y1 - th - 10 >= 4:
             ty = y1 - 7
         elif not has_below and y2 + th + 12 <= h - 4:
             ty = y2 + th + 6
+        elif x2 + tw + 10 <= w - 4:
+            tx = x2 + 6
+            ty = int(round((y1 + y2 + th) / 2.0))
         else:
             ty = max(th + 6, y1 + th + 4)
 
